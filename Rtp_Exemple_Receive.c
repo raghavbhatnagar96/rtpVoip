@@ -51,7 +51,6 @@
 #include <pulse/error.h>
 #include <pulse/gccmacro.h>
 #define BUFSIZE 1024
-
 #define MAXDATASIZE 1024 // max number of bytes we can get at once 
 
 
@@ -216,23 +215,23 @@ void us_serve(struct us *us,int ac, char **av) //Create cid here
     int max;
     int cid;
     int len;
-    int max_exp, fd2;
-    struct timespec now;
-    struct itimerspec new_value;
-    uint64_t exp, tot_exp;
-    ssize_t s3;
-    clock_gettime(CLOCK_REALTIME, &now);
-    /* Create a CLOCK_REALTIME absolute timer with initial
-    expiration and interval as specified in command line */
-    new_value.it_value.tv_sec = now.tv_sec ;
-    new_value.it_value.tv_nsec = now.tv_nsec;
-    new_value.it_interval.tv_sec=0;
-    max_exp = 100000000;
-    new_value.it_interval.tv_nsec = 1000;
-    fd2 = timerfd_create(CLOCK_REALTIME, 0);
-
-    fd2 == -1;
-
+    int endofExp=100000000;
+    int timeDescriptor;
+    struct timespec currentTime;
+    struct itimerspec newTime;
+    unsigned long long currentExp, sumExp;
+    ssize_t readTime;
+    /*Setting up timer*/
+    /*Made changes as the recieved packets were not the full data*/
+    clock_gettime(CLOCK_REALTIME, &currentTime);
+    newTime.it_value.tv_sec = currentTime.tv_sec ;
+    newTime.it_value.tv_nsec = currentTime.tv_nsec;
+    newTime.it_interval.tv_sec=0;
+    newTime.it_interval.tv_nsec = 1000;
+    /*These system calls create and operate on a timer that delivers timer
+       expiration notifications via a file descriptor.*/
+    timeDescriptor = timerfd_create(CLOCK_REALTIME, 0);
+    /*Create CID*/
     RTP_Create(&cid);
     while (1)
     {
@@ -240,7 +239,7 @@ void us_serve(struct us *us,int ac, char **av) //Create cid here
         switch (select(max, &us->fdset, NULL, NULL, NULL))
         {
             case -1:
-            if (errno != EINTR) /* The interupted by system call is not serious */
+            if (errno != EINTR) /* The interrupt is not serious */
             {
             perror("select");
             exit (EXIT_FAILURE);
@@ -252,16 +251,22 @@ void us_serve(struct us *us,int ac, char **av) //Create cid here
             exit (EXIT_FAILURE);
             default:
             {
-            printf("server: new connection from:\n"); 
-            timerfd_settime(fd2, TFD_TIMER_ABSTIME, &new_value, NULL);
-
-            for (tot_exp = 0; tot_exp < max_exp;) 
-            {
-                s3 = read(fd2, &exp, sizeof(uint64_t));
-                s3 != sizeof(uint64_t);
-
-                tot_exp += exp;
-                us_event(us, cid, &len,ac,av);
+                /* timerfd_settime() arms (starts) or disarms (stops) the timer referred
+       to by the file descriptor fd.*/
+                /*The timer will expire when the value of the
+              timer's clock reaches the value specified in
+              newTime.it_value.*/
+                timerfd_settime(timeDescriptor, TFD_TIMER_ABSTIME, &newTime, NULL);
+                //us_event(us, cid, &len,ac,av);
+                sumExp = 0;
+                while(sumExp < endofExp)
+                {
+                    printf("a");
+                    readTime = read(timeDescriptor, &currentExp, sizeof(uint64_t));
+                    //printf("%d", readTime);
+                    readTime!= sizeof(uint64_t);
+                    sumExp = sumExp + currentExp;
+                    us_event(us, cid, &len,ac,av);
                 }
             }
         }
